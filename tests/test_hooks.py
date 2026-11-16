@@ -1,4 +1,4 @@
-# Runs the three hooks against fake transcripts. Usage: python3 tests/test_hooks.py
+# Runs the four hooks against fake transcripts. Usage: python3 tests/test_hooks.py
 import datetime as dt
 import json
 import os
@@ -26,9 +26,13 @@ def transcript(name, ctx, minutes_ago, edits=()):
     return path
 
 
-def run(hook, payload):
+def run(hook, payload, pid=None):
+    env = dict(os.environ)
+    env.pop("CLAUDE_PID", None)
+    if pid:
+        env["CLAUDE_PID"] = pid
     out = subprocess.run([sys.executable, os.path.join(hooks, hook)], input=json.dumps(payload),
-                         capture_output=True, text=True).stdout.strip()
+                         capture_output=True, text=True, env=env).stdout.strip()
     return json.loads(out) if out else None
 
 
@@ -91,6 +95,23 @@ with open(os.path.join(house, "STATE.md"), "w", encoding="utf-8") as f:
 r = run("continue_after_clear.py", {"cwd": os.path.join(house, "plans")})
 check("tracks -> continue with the most recent, never ask",
       "carry on with the Garage track" in ctx(r) and "Do not ask" in ctx(r))
+house_state = os.path.join(house, "STATE.md")
+old_window = os.path.join(work, "window_a.jsonl")
+with open(old_window, "w", encoding="utf-8") as f:
+    f.write(json.dumps({"message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Edit", "input": {
+        "file_path": house_state, "old_string": "x", "new_string": "**Updated:** 2026-11-10 09:00"}}]}}) + "\n")
+run("remember_window.py", {"transcript_path": old_window, "cwd": house}, pid="4242")
+r = run("continue_after_clear.py", {"cwd": house}, pid="4242")
+check("window on Bathrooms -> /clear -> continues Bathrooms, not the newest",
+      "carry on with the Bathrooms track" in ctx(r))
+chained = os.path.join(work, "window_a2.jsonl")
+with open(chained, "w", encoding="utf-8") as f:
+    f.write(json.dumps({"attachment": {"content": ctx(r)}}) + "\n")
+run("remember_window.py", {"transcript_path": chained, "cwd": house}, pid="4242")
+check("second /clear in a row -> still Bathrooms",
+      "carry on with the Bathrooms track" in ctx(run("continue_after_clear.py", {"cwd": house}, pid="4242")))
+check("other window, nothing noted -> most recent (Garage)",
+      "carry on with the Garage track" in ctx(run("continue_after_clear.py", {"cwd": house}, pid="5555")))
 check("no STATE.md anywhere -> silent", run("continue_after_clear.py", {"cwd": os.path.join(work, "hooks")}) is None)
 
 shutil.rmtree(work, ignore_errors=True)

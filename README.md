@@ -4,7 +4,7 @@
 
 *[Leer en español](README.es.md)*
 
-AI coding sessions forget, burn through your usage limit and get cut off without warning. This kit fixes that with three plain files and three small hooks. No servers, no extra models, no dependencies beyond Python.
+AI coding sessions forget, burn through your usage limit and get cut off without warning. This kit fixes that with three plain files and four small hooks. No servers, no extra models, no dependencies beyond Python.
 
 **Works with:** Claude Code, Codex, Cursor and any agent that reads `AGENTS.md` (the rules and files). The hooks are for **Claude Code only**.
 
@@ -21,7 +21,8 @@ AI coding sessions forget, burn through your usage limit and get cut off without
 | `HISTORY.md` | One line per finished thing. Never read at start; only searched when an old fact is needed. |
 | `AGENTS.md` rules (+ `CLAUDE.md` that loads them) | Read STATE.md on start, write it down **after every step** (not only at the end), and hand over a ready-to-paste prompt when the session gets heavy. One file, read by every agent. |
 | `heavy_session.py` hook (Claude Code) | Heavy and idle session: blocks your message before it is sent (costs nothing). Heavy and active: tells Claude its exact size once, so it saves and gives you the prompt for a fresh session. |
-| `continue_after_clear.py` hook (Claude Code) | After `/clear`, the new session already knows to read STATE.md: type "continue" (or the track name) instead of pasting the prompt. |
+| `continue_after_clear.py` hook (Claude Code) | After `/clear`, the new session already knows to read STATE.md: type "continue" (or the track name) instead of pasting the prompt. With several windows open, each one goes back to its own track. |
+| `remember_window.py` hook (Claude Code) | Runs at `/clear` and notes which conversation this window had, so `continue_after_clear.py` knows the track it was on, even if another window updated STATE.md later. |
 | `require_state.py` hook (Claude Code) | If Claude changed files in a project with a STATE.md and did not update it, it cannot finish its turn until it does. |
 
 A new session then starts with: *"Continue with the project. Read only the rules file and STATE.md. First in 'Next' is: …"*, and it is cheap and up to speed in a minute.
@@ -37,7 +38,7 @@ A new session then starts with: *"Continue with the project. Read only the rules
 3. **Hooks:** copy the `hooks/*.py` files to `~/.claude/hooks/` and merge the `hooks` block from `hooks/settings.example.json` into `~/.claude/settings.json`. On Windows, use `python` instead of `python3` and a full path such as `C:/Users/you/.claude/hooks/heavy_session.py`.
 4. **Skill (optional):** copy `skills/session-kit` to `~/.claude/skills/session-kit`. Then type `/session-kit` in any project to set it up for you.
 
-Check the hooks with `python3 tests/test_hooks.py` (12 cases, no real sessions involved).
+Check the hooks with `python3 tests/test_hooks.py` (15 cases, no real sessions involved).
 
 ## Settings
 At the top of `hooks/heavy_session.py`:

@@ -33,6 +33,18 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/remember_window.py",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }
