@@ -1,0 +1,60 @@
+<p align="center"><img src="assets/banner.png" alt="KL Kit Sessions by Kleinmen Labs" width="100%"></p>
+
+# KL Kit Sessions
+
+*[Leer en español](README.es.md)*
+
+AI coding sessions forget, burn through your usage limit and get cut off without warning. This kit fixes that with three plain files and three small hooks. No servers, no extra models, no dependencies beyond Python.
+
+**Works with:** Claude Code, Codex, Cursor and any agent that reads `AGENTS.md` (the rules and files). The hooks are for **Claude Code only**.
+
+## The problem
+- **Every new session starts from zero.** You explain the project again, or the agent reads half the repo to find out where things stand.
+- **Long sessions get expensive.** Coming back to a huge conversation after an hour reloads all of it at once and can eat a big part of your 5-hour limit in a single message.
+- **The cut-off comes without warning.** The agent cannot see how many tokens it has used, so the session dies mid-task and whatever was only in the chat is lost.
+
+## The fix
+| Piece | What it does |
+|---|---|
+| `STATE.md` | One page: Now · Done · Next · Key facts. The **only** thing a new session reads. It gets replaced, never turned into a diary. |
+| `STATE_tracks.md` | For several sessions at once in the same folder: one section per track. Also for the parts of one project, and for a parent folder with several projects inside (one track per project). "How are we doing?" gives one line per track, most recent first; "continue" carries on with the most recent track and says which. |
+| `HISTORY.md` | One line per finished thing. Never read at start; only searched when an old fact is needed. |
+| `AGENTS.md` rules (+ `CLAUDE.md` that loads them) | Read STATE.md on start, write it down **after every step** (not only at the end), and hand over a ready-to-paste prompt when the session gets heavy. One file, read by every agent. |
+| `heavy_session.py` hook (Claude Code) | Heavy and idle session: blocks your message before it is sent (costs nothing). Heavy and active: tells Claude its exact size once, so it saves and gives you the prompt for a fresh session. |
+| `continue_after_clear.py` hook (Claude Code) | After `/clear`, the new session already knows to read STATE.md: type "continue" (or the track name) instead of pasting the prompt. |
+| `require_state.py` hook (Claude Code) | If Claude changed files in a project with a STATE.md and did not update it, it cannot finish its turn until it does. |
+
+A new session then starts with: *"Continue with the project. Read only the rules file and STATE.md. First in 'Next' is: …"*, and it is cheap and up to speed in a minute.
+
+## Install
+1. **Per project** (any agent): copy `templates/` into the project and fill in `AGENTS.md` and `STATE.md`. `CLAUDE.md` only contains `@AGENTS.md`, so Claude Code reads the same rules. A project's own rules always win over the global ones.
+2. **Global rules** (optional, every project) from `global/AGENTS.md`. If you already have global rules, append instead of replacing:
+   - Claude Code: copy it to `~/.claude/CLAUDE.md`.
+   - Codex: copy it to `~/.codex/AGENTS.md`.
+   - Cursor: paste it into Settings → Rules → User Rules.
+
+### Claude Code extras
+3. **Hooks:** copy the `hooks/*.py` files to `~/.claude/hooks/` and merge the `hooks` block from `hooks/settings.example.json` into `~/.claude/settings.json`. On Windows, use `python` instead of `python3` and a full path such as `C:/Users/you/.claude/hooks/heavy_session.py`.
+4. **Skill (optional):** copy `skills/session-kit` to `~/.claude/skills/session-kit`. Then type `/session-kit` in any project to set it up for you.
+
+Check the hooks with `python3 tests/test_hooks.py` (12 cases, no real sessions involved).
+
+## Settings
+At the top of `hooks/heavy_session.py`:
+- `HEAVY_TOKENS = 150_000`: context size that counts as heavy.
+- `IDLE_MINUTES = 55`: how long before an idle heavy session gets blocked. Matches a 1-hour prompt cache; lower it if your cache expires sooner.
+- `FORCE_WORD = "force"`: start a message with it to skip the block.
+
+At the top of `hooks/require_state.py`: `MARGIN_MINUTES = 30` and the file name `STATE.md`.
+
+## Notes
+- The hooks read only the session transcript that Claude Code already keeps on your machine. They send nothing anywhere.
+- If a hook fails for any reason, it does nothing: it never blocks by mistake.
+- The files are in English because models follow it well and it uses fewer tokens. The agent still answers you in your own language.
+- The hooks read Claude Code's transcript format. Other agents keep their sessions differently, so the hooks do not apply there; the rules and files do.
+
+## License
+MIT. See [LICENSE](LICENSE).
+
+---
+Made by **Kleinmen Labs**.
