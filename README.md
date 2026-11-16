@@ -42,7 +42,7 @@ Check the hooks with `python3 tests/test_hooks.py` (15 cases, no real sessions i
 
 ## Settings
 At the top of `hooks/heavy_session.py`:
-- `HEAVY_TOKENS = 150_000`: context size that counts as heavy.
+- `HEAVY_TOKENS = 100_000`: context size that counts as heavy.
 - `IDLE_MINUTES = 55`: how long before an idle heavy session gets blocked. Matches a 1-hour prompt cache; lower it if your cache expires sooner.
 - `FORCE_WORD = "force"`: start a message with it to skip the block.
 

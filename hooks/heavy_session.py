@@ -14,7 +14,7 @@ import json
 import os
 import sys
 
-HEAVY_TOKENS = 150_000    # context size that counts as "heavy"
+HEAVY_TOKENS = 100_000    # context size that counts as "heavy"
 IDLE_MINUTES = 55         # prompt cache lifetime is up to 1 hour; adjust to your plan
 FORCE_WORD = "force"
 HERE = os.path.dirname(os.path.abspath(__file__))

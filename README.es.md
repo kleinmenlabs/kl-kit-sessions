@@ -42,7 +42,7 @@ Pruebe los frenos con `python3 tests/test_hooks.py` (15 casos, sin tocar sesione
 
 ## Ajustes
 Arriba en `hooks/heavy_session.py`:
-- `HEAVY_TOKENS = 150_000`: desde cuántos tokens la sesión cuenta como pesada.
+- `HEAVY_TOKENS = 100_000`: desde cuántos tokens la sesión cuenta como pesada.
 - `IDLE_MINUTES = 55`: cuánto tiempo quieta antes de bloquear. Va con una caché de 1 hora; bájelo si la suya dura menos.
 - `FORCE_WORD = "force"`: empiece el mensaje con esa palabra para saltarse el bloqueo.
 
