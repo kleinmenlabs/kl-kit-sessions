@@ -53,6 +53,9 @@ Arriba en `hooks/heavy_session.py`:
 
 Arriba en `hooks/require_state.py`: `MARGIN_MINUTES = 30` y el nombre del archivo, `STATE.md`.
 
+## Cómo colaborar
+¿Encontró una falla o tiene una idea? Abra un *issue* con los formularios (puede escribir en español) o lea [CONTRIBUTING.md](CONTRIBUTING.md) antes de mandar un *pull request*.
+
 ## Notas
 - Los frenos solo leen el registro de la sesión que Claude Code ya guarda en su equipo. No mandan nada a ninguna parte.
 - Si un freno falla por cualquier razón, no hace nada: nunca bloquea por error.

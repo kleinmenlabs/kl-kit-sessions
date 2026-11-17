@@ -53,6 +53,9 @@ At the top of `hooks/heavy_session.py`:
 
 At the top of `hooks/require_state.py`: `MARGIN_MINUTES = 30` and the file name `STATE.md`.
 
+## Contributing
+Found a bug or have an idea? Open an issue with the forms, or read [CONTRIBUTING.md](CONTRIBUTING.md) before sending a pull request.
+
 ## Notes
 - The hooks read only the session transcript that Claude Code already keeps on your machine. They send nothing anywhere.
 - If a hook fails for any reason, it does nothing: it never blocks by mistake.

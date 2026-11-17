@@ -1,0 +1,71 @@
+name: Bug report
+description: Something in the kit does not work as described.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Do not paste API keys, tokens or private transcripts.**
+        *¿Prefiere español? Puede escribir en español.*
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options:
+        - Claude Code
+        - Codex
+        - Cursor
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part?
+      options:
+        - heavy_session.py
+        - continue_after_clear.py
+        - remember_window.py
+        - message_to_window.py
+        - require_state.py
+        - Rules (AGENTS.md / CLAUDE.md)
+        - Templates (STATE.md / HISTORY.md / STATE_tracks.md)
+        - Skill /session-kit
+        - README / docs
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you do?
+      placeholder: "1. Opened a session in…\n2. Typed /clear and then \"continue\"\n3. …"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Output of `python3 tests/test_hooks.py`
+      render: text

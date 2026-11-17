@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest an improvement to the kit.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The kit stays small on purpose: plain files, a few hooks, no servers and no new dependencies.
+        *¿Prefiere español? Puede escribir en español.*
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem do you have?
+      placeholder: "When I… the session…"
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      multiple: true
+      options:
+        - Claude Code
+        - Codex
+        - Cursor
+        - Any agent
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything you tried instead?
