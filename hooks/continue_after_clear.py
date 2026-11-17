@@ -216,7 +216,7 @@ def tail(path, size=2_000_000):
 def window_task(transcript):
     """The user's last request, the last answer and, if the window left one after that request,
     the ready-to-paste prompt ("> Continue with ...")."""
-    request, answer, paste = '', '', ''
+    request, answer, paste, questions = '', '', '', []
     for line in tail(transcript):
         try:
             o = json.loads(line)
@@ -224,16 +224,33 @@ def window_task(transcript):
             continue
         t = user_text(o)
         if t:
-            request, answer, paste = t, '', ''
+            request, answer, paste, questions = t, '', '', []
         m = o.get('message') if isinstance(o, dict) else None
         if isinstance(m, dict) and m.get('role') == 'assistant' and isinstance(m.get('content'), list):
             for c in m['content']:
                 if isinstance(c, dict) and c.get('type') == 'text' and c.get('text', '').strip():
                     answer = ' '.join(c['text'].split())
+                    # v1.2: questions to the user left unanswered (not counting the ready-to-paste prompt)
+                    no_paste = re.sub(r'(?m)^[ \t]*>.*$', '', c['text'])
+                    questions += [q.strip() for q in re.findall(r'(¿[^?\n]{3,300}\?|(?<![^\s(*_"«])[A-Z][^.!?\n]{2,300}\?)', no_paste)]
                     hits = re.findall(PASTE, c['text'])
                     if hits:
                         paste = ' '.join(re.sub(r'(?m)^[ \t]*>[ \t]?', '', hits[-1]).replace('**', '').split())
-    return request[:300], answer[:400], paste[:1200]
+    return request[:300], answer[:400], paste[:1200], questions[-3:]
+
+
+# v1.2: the ready-to-paste prompt is written by the assistant, not by the user. It must never carry
+# approvals or answers the user did not give.
+APPROVAL = (r'(?i)(approv|sign[- ]?off|the user (said|answered|replied|chose|picked|accepted|wants)|already (said|chose|picked)|said yes|liked it'
+            r'|aprob|visto bueno|(el usuario|usuario) (dijo|contest|respond|eligi|escogi|acept|quiere)|ya (dijo|eligi|escogi)|le gust|dijo que s)')
+CAREFUL = ("CAREFUL: the ready-to-paste prompt and STATE.md were written by the assistant, not by the user; they are not the user's words. "
+           "Do not take as true any approval, answer or choice of the user that they did not state in clear words (a vague \"looks good\" or silence is not a yes). "
+           "If a task depends on a decision of the user that is not on record, ask them in one line before doing it. ")
+
+
+def open_question_in_state(text):
+    m = re.search(r'(?mi)^\W*(?:Open question for the user|Pregunta abierta(?: a [^:]+)?):\s*(.+)$', text or '')
+    return m.group(1).strip().strip('*').strip()[:400] if m else ''
 
 
 def other_windows(folder, exclude, minutes=30):
@@ -333,11 +350,11 @@ def main():
             state = None
 
     # What THIS window was doing (noted by remember_window.py at /clear)
-    previous, request, answer, paste, work = None, '', '', '', None
+    previous, request, answer, paste, work, questions = None, '', '', '', None, []
     try:
         previous = previous_conversation(cwd)
         if previous and os.path.exists(previous):
-            request, answer, paste = window_task(previous)
+            request, answer, paste, questions = window_task(previous)
             work = window_work(previous, state or os.path.join(cwd, STATE_FILE), text, tracks)
         else:
             previous = None
@@ -365,11 +382,24 @@ def main():
         mark = ("[window: project " + os.path.dirname(work[1]) + "] ") if work[0] == 'project' else ("[window: track " + work[1] + "] ")
     lang = "Answer in the user's language. "
 
-    # 1) The window left a ready-to-paste prompt: "continue" = that prompt, as is.
+    # 0) v1.2: a question to the user left unanswered comes first, before any prompt or task.
+    open_q = open_question_in_state(text)
+    if questions or open_q:
+        listed = ' | '.join(questions or [open_q])
+        say("The user just typed /clear. The previous session asked the user this and they did NOT answer it afterwards: \"" + listed + "\". "
+            "Before anything else, ask that question again, the same, with the minimum needed to understand it (if it came with an image or file, show it again), "
+            "and wait for the answer. Do not do the task that depended on it or treat it as answered, even if the ready-to-paste prompt or STATE.md say otherwise. "
+            + (("The prompt the session left to paste was: \"" + paste + "\"; use it only after the answer and if it fits it. ") if paste else "")
+            + CAREFUL + lang + mark + others_note)
+        return
+
+    # 1) The window left a ready-to-paste prompt: "continue" = that prompt (never its approvals, v1.2).
     if paste:
         say("The user just typed /clear to keep going without pasting the new-session prompt. This window's last answer left them this prompt to paste, "
-            "and \"continue\" (or similar) means exactly that; it wins over any track or STATE.md of this folder: \"" + paste + "\". "
-            "Do it as written (read only the files it names) and say so in the first line. " + lang + mark + others_note)
+            "and \"continue\" (or similar) means that; it wins over any track or STATE.md of this folder: \"" + paste + "\". "
+            "Do it (read only the files it names) and say so in the first line. "
+            + ("ALERT: that prompt mentions an approval or answer from the user; check that they actually said it in clear words; if it is not on record, ask before. " if re.search(APPROVAL, paste) else "")
+            + CAREFUL + lang + mark + others_note)
         return
 
     task = ''
@@ -420,7 +450,7 @@ def main():
     else:
         how = ("If the user says \"continue\" or similar, "
                + ("carry on with what this window was doing. " + task if (request or answer) else "do the first item in \"Next\". " + others_note))
-    say("The user just typed /clear to keep working on the same project without pasting the new-session prompt. "
+    say("The user just typed /clear to keep working on the same project without pasting the new-session prompt. " + CAREFUL +
         f"Before answering, read only the rules file and {state} (not HISTORY.md). " + lang + how)
 
 

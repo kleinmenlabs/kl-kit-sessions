@@ -23,7 +23,8 @@
 You cannot see how many tokens you have used, and the cut-off comes without warning. The session is **heavy** if any of these happened: a note "HEAVY SESSION: this session is at…" arrived (sent by the session-kit hook, Claude Code only), an automatic summary or compaction of the conversation appeared, you looked at many images, it has been going for many hours, or the user is about to switch accounts. Then, when the current step is done:
 1. **STATE.md**: replace the summary (one page, max): Now · Done · Next (in order) · Key facts. With tracks, only your section and its `Updated`; with a parent folder STATE.md above, your line there too.
 2. **HISTORY.md**: append one line: `[date time] Done | Evidence/file | Pending | Next step` (with tracks: `[date time] [Track] Done | …`).
-3. Give the user, in the chat, the **prompt for a new session** below, and say: "Close this session and open a new one with this text".
+3. **The prompt to paste is written by you, not by the user:** it carries only tasks the user asked for. Never write that the user approved, answered or chose something they did not say in clear words (a vague "looks good" or silence is not a yes), and never put words in their mouth. If a question to the user was left unanswered, the prompt does not carry the task that depends on it; it says: "First ask me this question that was left unanswered: <the question, with the image or file if there was one>. Wait for my answer." and STATE.md gets a line above Next: `Open question for the user: <question>` (removed once they answer). When opening a session, if STATE.md has an "Open question for the user", ask it before anything else.
+4. Give the user, in the chat, the **prompt for a new session** below, and say: "Close this session and open a new one with this text".
 
 > Continue with the project. Read only the rules file and STATE.md (not HISTORY.md). First in "Next" is: <the exact task>. Do it and let me know.
 

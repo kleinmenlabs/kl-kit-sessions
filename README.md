@@ -9,6 +9,7 @@ AI coding sessions forget, burn through your usage limit and get cut off without
 **Works with:** Claude Code, Codex, Cursor and any agent that reads `AGENTS.md` (the rules and files). The hooks are for **Claude Code only**.
 
 ## What's new
+- **v1.2 (Nov 17, 2026):** the ready-to-paste prompt **can no longer approve things for you.** It only carries tasks you asked for, never "the user said yes" when you did not. If the last answer left you a question and you did not answer it, after `/clear` the new session asks it again first and waits, instead of doing the task. If the prompt mentions an approval, the session checks that you really said it. 27 tests.
 - **v1.1 (Nov 16, 2026):** after `/clear`, each window goes back to **its own** task instead of grabbing another window's work. "Continue" now means the prompt that window left you (or your last request), it finds the real project even if the session was opened in another folder, and a new hook, `message_to_window.py`, makes sure a request reaches the right window and only one. 23 tests.
 - **v1.0 (Nov 16, 2026):** first release.
 
@@ -43,7 +44,7 @@ A new session then starts with: *"Continue with the project. Read only the rules
 3. **Hooks:** copy the `hooks/*.py` files to `~/.claude/hooks/` and merge the `hooks` block from `hooks/settings.example.json` into `~/.claude/settings.json`. On Windows, use `python` instead of `python3` and a full path such as `C:/Users/you/.claude/hooks/heavy_session.py`.
 4. **Skill (optional):** copy `skills/session-kit` to `~/.claude/skills/session-kit`. Then type `/session-kit` in any project to set it up for you.
 
-Check the hooks with `python3 tests/test_hooks.py` (23 cases, no real sessions involved).
+Check the hooks with `python3 tests/test_hooks.py` (27 cases, no real sessions involved).
 
 ## Settings
 At the top of `hooks/heavy_session.py`:

@@ -9,6 +9,7 @@ Las sesiones de los asistentes de programación con IA olvidan, se comen el cupo
 **Sirve con:** Claude Code, Codex, Cursor y cualquier asistente que lea `AGENTS.md` (las reglas y los archivos). Los frenos son **solo para Claude Code**.
 
 ## Novedades
+- **v1.2 (17 nov 2026):** el texto para pegar **ya no puede aprobar cosas por usted.** Solo trae tareas que usted pidió, nunca "el usuario dijo que sí" cuando no lo dijo. Si la última respuesta le dejó una pregunta y usted no la contestó, después de `/clear` la sesión nueva se la vuelve a hacer primero y espera, en vez de hacer la tarea. Si el texto habla de una aprobación, la sesión comprueba que usted sí la dio. 27 pruebas.
 - **v1.1 (16 nov 2026):** después de `/clear`, cada ventana vuelve a **su propia** tarea en vez de meterse en el trabajo de otra. "Siga" ahora es el texto que esa ventana le dejó (o su último pedido), encuentra el proyecto real aunque la sesión se haya abierto en otra carpeta, y un freno nuevo, `message_to_window.py`, hace que un pedido llegue a la ventana correcta y a una sola. 23 pruebas.
 - **v1.0 (16 nov 2026):** primera versión.
 
@@ -43,7 +44,7 @@ Así una sesión nueva arranca con *"Siga con el proyecto. Lea solo el archivo d
 3. **Frenos:** copie los `hooks/*.py` a `~/.claude/hooks/` y agregue el bloque `hooks` de `hooks/settings.example.json` a su `~/.claude/settings.json`. En Windows use `python` en vez de `python3` y la ruta completa, por ejemplo `C:/Users/usted/.claude/hooks/heavy_session.py`.
 4. **Habilidad (opcional):** copie `skills/session-kit` a `~/.claude/skills/session-kit`. Después escriba `/session-kit` en cualquier proyecto y se lo prepara solo.
 
-Pruebe los frenos con `python3 tests/test_hooks.py` (23 casos, sin tocar sesiones reales).
+Pruebe los frenos con `python3 tests/test_hooks.py` (27 casos, sin tocar sesiones reales).
 
 ## Ajustes
 Arriba en `hooks/heavy_session.py`:

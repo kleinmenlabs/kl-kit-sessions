@@ -64,6 +64,8 @@ def warn_once(session, ctx):
             f"update STATE.md and HISTORY.md, tell the user the session is already at {k}k tokens and that "
             "it is better to continue in a new one, and give them the prompt to paste with the first item "
             "of 'Next', saying: \"Close this session and open a new one with this text\". "
+            "The prompt carries only tasks the user asked for, never approvals or answers they did not give; "
+            "if a question to the user was left unanswered, the prompt asks first to repeat that question and wait. "
             "Talk to the user in their own language."
         )}}))
 
