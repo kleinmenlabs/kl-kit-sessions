@@ -45,6 +45,18 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/message_to_window.py",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }

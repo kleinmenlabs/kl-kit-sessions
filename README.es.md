@@ -4,9 +4,13 @@
 
 *[Read in English](README.md)*
 
-Las sesiones de los asistentes de programación con IA olvidan, se comen el cupo y se cortan sin aviso. Este kit lo arregla con tres archivos de texto y cuatro frenos pequeños. No necesita servidores ni modelos extra, solo Python.
+Las sesiones de los asistentes de programación con IA olvidan, se comen el cupo y se cortan sin aviso. Este kit lo arregla con tres archivos de texto y cinco frenos pequeños. No necesita servidores ni modelos extra, solo Python.
 
 **Sirve con:** Claude Code, Codex, Cursor y cualquier asistente que lea `AGENTS.md` (las reglas y los archivos). Los frenos son **solo para Claude Code**.
+
+## Novedades
+- **v1.1 (16 nov 2026):** después de `/clear`, cada ventana vuelve a **su propia** tarea en vez de meterse en el trabajo de otra. "Siga" ahora es el texto que esa ventana le dejó (o su último pedido), encuentra el proyecto real aunque la sesión se haya abierto en otra carpeta, y un freno nuevo, `message_to_window.py`, hace que un pedido llegue a la ventana correcta y a una sola. 23 pruebas.
+- **v1.0 (16 nov 2026):** primera versión.
 
 ## El problema
 - **Cada sesión nueva arranca de cero.** Usted vuelve a explicar el proyecto, o el asistente lee medio repositorio para saber en qué va.
@@ -21,8 +25,9 @@ Las sesiones de los asistentes de programación con IA olvidan, se comen el cupo
 | `HISTORY.md` | Una línea por cada cosa terminada. No se lee al arrancar; solo se busca cuando falta un dato viejo. |
 | Reglas en `AGENTS.md` (+ un `CLAUDE.md` que las carga) | Leer STATE.md al abrir, anotar **después de cada paso** (no solo al final) y, cuando la sesión pesa, dejar un texto listo para pegar en una sesión nueva. Un solo archivo que leen todos los asistentes. |
 | Freno `heavy_session.py` (Claude Code) | Sesión pesada y quieta: bloquea el mensaje antes de mandarlo, sin gastar nada. Pesada y activa: le dice a Claude cuánto pesa, una sola vez, para que guarde y le deje el texto de la sesión nueva. |
-| Freno `continue_after_clear.py` (Claude Code) | Después de `/clear`, la sesión ya sabe que debe leer STATE.md: escriba "siga" (o el nombre del frente) en vez de pegar el texto. Con varias ventanas abiertas, cada una vuelve a su propio frente. |
+| Freno `continue_after_clear.py` (Claude Code) | Después de `/clear`, escriba "siga" (o el nombre del frente) en vez de pegar el texto. "Siga" es la tarea que **esa ventana** venía haciendo: el texto que le dejó en su última respuesta o su último pedido. Encuentra el proyecto en que de verdad trabajaba, aunque la ventana se haya abierto en otra carpeta, y no toca lo que están haciendo las otras ventanas. |
 | Freno `remember_window.py` (Claude Code) | Corre en el `/clear` y anota qué conversación tenía esa ventana, para que `continue_after_clear.py` sepa en qué frente iba, aunque otra ventana haya actualizado STATE.md después. |
+| Freno `message_to_window.py` (Claude Code) | Antes de que una sesión le mande un mensaje a otra ventana con nombre de carpeta (`app-77`, `app-62`…), le muestra qué está haciendo cada ventana abierta, para que el pedido llegue a la correcta. El mismo pedido nunca va a dos ventanas. |
 | Freno `require_state.py` (Claude Code) | Si Claude cambió archivos de un proyecto con STATE.md y no lo actualizó, no lo deja terminar hasta que lo haga. |
 
 Así una sesión nueva arranca con *"Siga con el proyecto. Lea solo el archivo de reglas y STATE.md. Lo primero en 'Siguiente' es: …"*, gasta poco y en un minuto ya sabe en qué va todo.
@@ -38,7 +43,7 @@ Así una sesión nueva arranca con *"Siga con el proyecto. Lea solo el archivo d
 3. **Frenos:** copie los `hooks/*.py` a `~/.claude/hooks/` y agregue el bloque `hooks` de `hooks/settings.example.json` a su `~/.claude/settings.json`. En Windows use `python` en vez de `python3` y la ruta completa, por ejemplo `C:/Users/usted/.claude/hooks/heavy_session.py`.
 4. **Habilidad (opcional):** copie `skills/session-kit` a `~/.claude/skills/session-kit`. Después escriba `/session-kit` en cualquier proyecto y se lo prepara solo.
 
-Pruebe los frenos con `python3 tests/test_hooks.py` (15 casos, sin tocar sesiones reales).
+Pruebe los frenos con `python3 tests/test_hooks.py` (23 casos, sin tocar sesiones reales).
 
 ## Ajustes
 Arriba en `hooks/heavy_session.py`:
