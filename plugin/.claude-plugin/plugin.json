@@ -1,0 +1,7 @@
+{
+  "name": "kl-kit-sessions-bar",
+  "version": "1.3.0",
+  "description": "Status bar: tokens saved with /clear, this window's size and the total of your open windows",
+  "author": { "name": "Kleinmen Labs" },
+  "license": "MIT"
+}

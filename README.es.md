@@ -9,6 +9,7 @@ Las sesiones de los asistentes de programación con IA olvidan, se comen el cupo
 **Sirve con:** Claude Code, Codex, Cursor y cualquier asistente que lea `AGENTS.md` (las reglas y los archivos). Los frenos son **solo para Claude Code**.
 
 ## Novedades
+- **v1.3 (18 nov 2026):** una **barra** opcional para Claude Code: *"KL Kit Sessions: 426k tokens saved with /clear · this window: 105k · 5 windows: 380k"*. Cuenta lo que el kit le ha ahorrado (cada conversación pesada que usted limpió o que el freno bloqueó cuenta una vez, con su tamaño), cuánto pesa esta ventana ahora y la suma de sus ventanas abiertas. Freno nuevo `tokens_saved.py`, que usan `heavy_session.py` y `remember_window.py`. 31 pruebas.
 - **v1.2 (17 nov 2026):** el texto para pegar **ya no puede aprobar cosas por usted.** Solo trae tareas que usted pidió, nunca "el usuario dijo que sí" cuando no lo dijo. Si la última respuesta le dejó una pregunta y usted no la contestó, después de `/clear` la sesión nueva se la vuelve a hacer primero y espera, en vez de hacer la tarea. Si el texto habla de una aprobación, la sesión comprueba que usted sí la dio. 27 pruebas.
 - **v1.1 (16 nov 2026):** después de `/clear`, cada ventana vuelve a **su propia** tarea en vez de meterse en el trabajo de otra. "Siga" ahora es el texto que esa ventana le dejó (o su último pedido), encuentra el proyecto real aunque la sesión se haya abierto en otra carpeta, y un freno nuevo, `message_to_window.py`, hace que un pedido llegue a la ventana correcta y a una sola. 23 pruebas.
 - **v1.0 (16 nov 2026):** primera versión.
@@ -29,6 +30,8 @@ Las sesiones de los asistentes de programación con IA olvidan, se comen el cupo
 | Freno `continue_after_clear.py` (Claude Code) | Después de `/clear`, escriba "siga" (o el nombre del frente) en vez de pegar el texto. "Siga" es la tarea que **esa ventana** venía haciendo: el texto que le dejó en su última respuesta o su último pedido. Encuentra el proyecto en que de verdad trabajaba, aunque la ventana se haya abierto en otra carpeta, y no toca lo que están haciendo las otras ventanas. |
 | Freno `remember_window.py` (Claude Code) | Corre en el `/clear` y anota qué conversación tenía esa ventana, para que `continue_after_clear.py` sepa en qué frente iba, aunque otra ventana haya actualizado STATE.md después. |
 | Freno `message_to_window.py` (Claude Code) | Antes de que una sesión le mande un mensaje a otra ventana con nombre de carpeta (`app-77`, `app-62`…), le muestra qué está haciendo cada ventana abierta, para que el pedido llegue a la correcta. El mismo pedido nunca va a dos ventanas. |
+| `tokens_saved.py` (Claude Code) | Cuenta los tokens que el kit le ahorró: cuando `heavy_session.py` bloquea una conversación pesada y quieta o usted le hace `/clear` a una, su tamaño se suma una vez en `~/.claude/hooks/tokens_saved.json`. Es un estimado. |
+| Barra `plugin/` (Claude Code, opcional) | Siempre a la vista: tokens ahorrados con `/clear`, lo que pesa esta ventana y la suma de sus ventanas abiertas. Se actualiza cada minuto y después de cada respuesta. |
 | Freno `require_state.py` (Claude Code) | Si Claude cambió archivos de un proyecto con STATE.md y no lo actualizó, no lo deja terminar hasta que lo haga. |
 
 Así una sesión nueva arranca con *"Siga con el proyecto. Lea solo el archivo de reglas y STATE.md. Lo primero en 'Siguiente' es: …"*, gasta poco y en un minuto ya sabe en qué va todo.
@@ -43,8 +46,9 @@ Así una sesión nueva arranca con *"Siga con el proyecto. Lea solo el archivo d
 ### Solo en Claude Code
 3. **Frenos:** copie los `hooks/*.py` a `~/.claude/hooks/` y agregue el bloque `hooks` de `hooks/settings.example.json` a su `~/.claude/settings.json`. En Windows use `python` en vez de `python3` y la ruta completa, por ejemplo `C:/Users/usted/.claude/hooks/heavy_session.py`.
 4. **Habilidad (opcional):** copie `skills/session-kit` a `~/.claude/skills/session-kit`. Después escriba `/session-kit` en cualquier proyecto y se lo prepara solo.
+5. **Barra (opcional):** ejecute `claude plugin marketplace add kleinmenlabs/kl-kit-sessions` y después `claude plugin install kl-kit-sessions-bar@kl-kit-sessions` (o `/plugin` dentro de Claude Code). Sale en las sesiones nuevas. Lee `~/.claude/hooks/` (o `$CLAUDE_CONFIG_DIR/hooks/`), así que instale primero los frenos del paso 3.
 
-Pruebe los frenos con `python3 tests/test_hooks.py` (27 casos, sin tocar sesiones reales).
+Pruebe los frenos con `python3 tests/test_hooks.py` (31 casos, sin tocar sesiones reales) y la barra con `claude plugin test plugin`.
 
 ## Ajustes
 Arriba en `hooks/heavy_session.py`:

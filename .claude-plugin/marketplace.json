@@ -1,0 +1,11 @@
+{
+  "name": "kl-kit-sessions",
+  "owner": { "name": "Kleinmen Labs" },
+  "plugins": [
+    {
+      "name": "kl-kit-sessions-bar",
+      "source": "./plugin",
+      "description": "Status bar: tokens saved with /clear, this window's size and the total of your open windows"
+    }
+  ]
+}

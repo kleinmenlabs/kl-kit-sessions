@@ -2,3 +2,6 @@ heavy_session_warned.json
 windows.json
 __pycache__/
 messages.json
+tokens_saved.json
+tokens_saved.json.tmp
+open_sessions/

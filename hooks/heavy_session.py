@@ -84,6 +84,12 @@ def main():
     if idle < IDLE_MINUTES:
         warn_once(data.get("session_id") or transcript, ctx)
         return
+    try:  # tokens saved counter (status bar in plugin/)
+        sys.path.insert(0, HERE)
+        import tokens_saved
+        tokens_saved.add(transcript, ctx, "guard")
+    except Exception:
+        pass
     hours, mins = int(idle // 60), int(idle % 60)
     idle_txt = f"{hours} h {mins} min" if hours else f"{mins} min"
     print(json.dumps({

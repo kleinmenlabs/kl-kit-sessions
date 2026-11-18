@@ -219,6 +219,32 @@ check("same request to a second window -> stopped",
       bool(r) and "already sent this same request" in r["hookSpecificOutput"]["permissionDecisionReason"])
 shutil.rmtree(outer, ignore_errors=True)
 
+# Tokens saved counter (read by the status bar in plugin/)
+saved_file = os.path.join(hooks, "tokens_saved.json")
+if os.path.exists(saved_file):
+    os.remove(saved_file)
+
+
+def saved_total():
+    try:
+        with open(saved_file, encoding="utf-8") as f:
+            return json.load(f)["total"]
+    except Exception:
+        return 0
+
+
+blocked = transcript("saved-blocked", 130_000, 90)
+run("heavy_session.py", {"session_id": "s1", "transcript_path": blocked, "prompt": "hi"})
+check("blocked heavy session -> counted as saved", saved_total() == 130_010)
+run("heavy_session.py", {"session_id": "s1", "transcript_path": blocked, "prompt": "hi again"})
+check("same conversation blocked twice -> counted once", saved_total() == 130_010)
+cleared = transcript("saved-cleared", 200_000, 1)
+run("remember_window.py", {"transcript_path": cleared, "cwd": work}, pid="9001")
+check("/clear on a heavy conversation -> added", saved_total() == 330_020)
+small = transcript("saved-small", 50_000, 1)
+run("remember_window.py", {"transcript_path": small, "cwd": work}, pid="9002")
+check("/clear on a light conversation -> not counted", saved_total() == 330_020)
+
 shutil.rmtree(work, ignore_errors=True)
 print(f"\n{sum(results)}/{len(results)} passed")
 sys.exit(0 if all(results) else 1)
