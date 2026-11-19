@@ -11,7 +11,11 @@
 #   commands, a pasted "Continue with the project X (path)"), even if the session was opened
 #   in another folder.
 # - With tracks: the track this window was on; if unknown, the most recently updated one.
-#   It says which and never asks.
+#   It says which and never asks. v1.4: but if it does not know what this window was doing and
+#   other windows are working in the same folder, it asks "What was this window working on?".
+# - v1.4: if the last answer gave you numbered or lettered options, they are shown again word for
+#   word (same numbers, same order), and a message the heavy-session guard blocked counts as your answer.
+# - v1.4: if the conversation was compacted (auto summary), the task comes from the summary.
 # - It lists the other windows that moved in the same folder in the last 30 minutes, with
 #   their last request, so the new session does not take over their work.
 # - Parent folder with no STATE.md (projects inside with their own): tells the session to create it first.
@@ -20,6 +24,7 @@ import json, os, re, sys, time
 
 STATE_FILE = 'STATE.md'
 HERE = os.path.dirname(os.path.abspath(__file__))
+CONFIG = os.environ.get('CLAUDE_CONFIG_DIR') or os.path.join(os.path.expanduser('~'), '.claude')  # v1.4
 WINDOWS_FILE = os.path.join(HERE, 'windows.json')
 MARK = r'\[window: (track|project) ([^\]]+)\]'
 SKIP = ('demo', 'templates', 'scratchpad', 'temp', 'tmp')  # folders whose STATE.md is not the real work
@@ -99,7 +104,8 @@ def previous_conversation(cwd):
     if not key:  # no window id: the one noted seconds ago in the same folder
         near = [(v.get('t', 0), k) for k, v in windows.items()
                 if v.get('cwd') == cwd and now - v.get('t', 0) < 15]
-        key = max(near)[1] if near else None
+        # v1.4: if two windows of the same folder cleared at once, we cannot tell which is which
+        key = near[0][1] if len(near) == 1 else None
     if not key:
         return None
     t = windows.pop(key).get('transcript')
@@ -213,21 +219,101 @@ def tail(path, size=2_000_000):
         return f.read().decode('utf-8', 'ignore').splitlines()
 
 
+def task_from_summary(o):
+    """v1.4: if the conversation was compacted, the user's last request lives inside the summary.
+    Takes its "Current Work" and "Optional Next Step"."""
+    if not isinstance(o, dict) or o.get('type') != 'user' or not o.get('isCompactSummary'):
+        return ''
+    c = (o.get('message') or {}).get('content')
+    c = c if isinstance(c, str) else ' '.join(x.get('text', '') for x in (c or []) if isinstance(x, dict))
+    parts = []
+    for title, size in (('Current Work', 500), ('Optional Next Step', 900)):
+        m = re.search(r'(?:^|\n)[#\s\d.*]*' + title + r'[*:]*\s*(.*?)(?=\n[#\s]*\d+\.\s+\**[A-Z][^\n]{0,40}:|\nIf you need specific details|\Z)', c, re.S)
+        if m and m.group(1).strip():
+            parts.append(title + ': ' + ' '.join(m.group(1).split())[:size])
+    return ('(from the automatic summary of the conversation) ' + ' | '.join(parts)) if parts else ''
+
+
+# v1.4: after the guard and /clear, the new session offered DIFFERENT options and the user answered
+# "2" meaning the old ones. Now the options are carried over as they were (same numbers, order and text).
+OPTION = re.compile(r'^[ \t]*(?:[-*•][ \t]+)?(?:\*\*|__)?[ \t]*(?:'
+                    r'\(?([1-9]|[A-Ea-e])[.)](?:\*\*|__)?[ \t]+'          # 1. / 2) / A. / (b)
+                    r'|(?:\*\*|__)?([A-E1-9])(?:\*\*|__)[ \t]*[—–:\-]'   # **A** — text
+                    r'|(?:Option|Opci[oó]n)[ \t]+([1-9A-Ea-e])\b'           # Option 2
+                    r')', re.I)
+HINT = re.compile(r'(?i)option|opci[oó]n|choose|pick|prefer|recommend|which (?:one|do you)|escoj|elij|prefiere|recomiend|cu[aá]l (?:quiere|le|sigo)|¿|\?')
+
+
+def options_in_text(text):
+    """The block of numbered or lettered options of an answer, word for word (without the ready-to-paste
+    prompt). Needs at least 2 options and some hint that they are for the user to choose."""
+    lines = [l for l in text.splitlines() if not re.match(r'^[ \t]*>', l)]
+    marks = [i for i, l in enumerate(lines) if OPTION.match(l)]
+    if len(marks) < 2:
+        return ''
+    group = [marks[-1]]  # the last group of options (up to 4 detail lines between them)
+    for i in reversed(marks[:-1]):
+        if group[0] - i <= 5:
+            group.insert(0, i)
+        else:
+            break
+    if len(group) < 2:
+        return ''
+    start, end = group[0], group[-1]
+    while end + 1 < len(lines) and lines[end + 1].strip() and not OPTION.match(lines[end + 1]) \
+            and (lines[end + 1].startswith((' ', '\t')) or end + 1 - group[-1] <= 2) and end - group[-1] < 4:
+        end += 1
+    block = '\n'.join(lines[start:end + 1]).strip()
+    around = '\n'.join(lines[max(0, start - 6):min(len(lines), end + 6)])
+    if not HINT.search(around):
+        return ''  # looks like instruction steps, not options to choose from
+    return block[:2500]
+
+
+def options_of_ask(inp):
+    """Options of the question box (AskUserQuestion), numbered in the order they were shown."""
+    parts = []
+    for q in (inp or {}).get('questions') or []:
+        lines = [q.get('question', '').strip()]
+        for n, op in enumerate(q.get('options') or [], 1):
+            d = (op.get('description') or '').strip()
+            lines.append(f"{n}. {op.get('label', '').strip()}" + (f" — {d}" if d else ''))
+        parts.append('\n'.join(lines))
+    return '\n\n'.join(parts)[:2500]
+
+
 def window_task(transcript):
     """The user's last request, the last answer and, if the window left one after that request,
-    the ready-to-paste prompt ("> Continue with ...")."""
-    request, answer, paste, questions = '', '', '', []
+    the ready-to-paste prompt ("> Continue with ..."). v1.4: also the options it gave the user after
+    their last message, word for word."""
+    request, answer, paste, questions, options = '', '', '', [], ''
+    asks = {}  # question-box id -> options (dropped once the user answered it)
     for line in tail(transcript):
         try:
             o = json.loads(line)
         except Exception:
             continue
         t = user_text(o)
+        if not t:
+            t = task_from_summary(o)  # v1.4: compacted and the user did not write afterwards
         if t:
-            request, answer, paste, questions = t, '', '', []
+            request, answer, paste, questions, options = t, '', '', [], ''
+            asks = {}
         m = o.get('message') if isinstance(o, dict) else None
-        if isinstance(m, dict) and m.get('role') == 'assistant' and isinstance(m.get('content'), list):
+        if isinstance(m, dict) and m.get('role') == 'user' and isinstance(m.get('content'), list):
             for c in m['content']:
+                if isinstance(c, dict) and c.get('type') == 'tool_result' and c.get('tool_use_id') in asks:
+                    txt = json.dumps(c.get('content'), ensure_ascii=False).lower()
+                    if not c.get('is_error') and not re.search(r"reject|declin|interrupt|cancel|didn.t answer|no respond", txt):
+                        asks.pop(c['tool_use_id'])  # the user already chose in the box
+                        options = ''
+        # v1.4: system messages ("You've hit your limit", API errors) are not this window's answers
+        synthetic = isinstance(m, dict) and (m.get('model') == '<synthetic>' or o.get('isApiErrorMessage'))
+        if isinstance(m, dict) and m.get('role') == 'assistant' and isinstance(m.get('content'), list) and not synthetic:
+            for c in m['content']:
+                if isinstance(c, dict) and c.get('type') == 'tool_use' and c.get('name') == 'AskUserQuestion':
+                    asks[c.get('id')] = options_of_ask(c.get('input'))
+                    options = asks[c.get('id')]
                 if isinstance(c, dict) and c.get('type') == 'text' and c.get('text', '').strip():
                     answer = ' '.join(c['text'].split())
                     # v1.2: questions to the user left unanswered (not counting the ready-to-paste prompt)
@@ -236,7 +322,65 @@ def window_task(transcript):
                     hits = re.findall(PASTE, c['text'])
                     if hits:
                         paste = ' '.join(re.sub(r'(?m)^[ \t]*>[ \t]?', '', hits[-1]).replace('**', '').split())
-    return request[:300], answer[:400], paste[:1200], questions[-3:]
+                    op = options_in_text(c['text'])
+                    if op:
+                        options = op
+    if asks and not options:
+        options = list(asks.values())[-1]
+    return request[:1400 if request.startswith('(from the') else 300], answer[:400], paste[:1200], questions[-3:], options
+
+
+BLOCKED_FILE = os.path.join(HERE, 'blocked_messages.json')
+
+
+def blocked_message(transcript):
+    """What the user typed in that conversation and heavy_session.py did not let through. v1.4."""
+    try:
+        with open(BLOCKED_FILE, encoding='utf-8') as f:
+            blocked = json.load(f)
+    except Exception:
+        return ''
+    key = next((k for k in blocked if k and same(k, transcript)), None)
+    if not key:
+        return ''
+    v = blocked.pop(key)
+    try:
+        with open(BLOCKED_FILE, 'w', encoding='utf-8') as f:
+            json.dump(blocked, f, ensure_ascii=False)
+    except Exception:
+        pass
+    if time.time() - v.get('t', 0) > 86400:
+        return ''
+    # If the user sent something after the block (e.g. with "force"), the blocked one no longer counts
+    from datetime import datetime
+    for line in reversed(tail(transcript, 400_000)):
+        try:
+            o = json.loads(line)
+        except Exception:
+            continue
+        if user_text(o) and o.get('timestamp'):
+            try:
+                if datetime.fromisoformat(o['timestamp'].replace('Z', '+00:00')).timestamp() > v.get('t', 0):
+                    return ''
+            except Exception:
+                pass
+            break
+    return (v.get('prompt') or '').strip()[:1500]
+
+
+def options_note(options, blocked):
+    """What goes first after /clear when options or a blocked message were left. v1.4."""
+    out = ''
+    if options:
+        out += ("FIRST, BEFORE ANYTHING ELSE: this window's last answer left the user these options to choose from, and they have not chosen yet (or the guard stopped them): "
+                "<<<\n" + options + "\n>>> "
+                "Show them again IDENTICAL: same text, same numbers or letters, same order; do not add, remove, merge, change or reorder any, "
+                "and do not propose new options instead of these. If the user answers with a number or a letter (\"2\", \"B\"), it refers to THIS list. ")
+    if blocked:
+        out += ("Before /clear the user typed this and the heavy-session guard did not let it through: \"" + blocked + "\". That is their request: "
+                + ("if it is a number, a letter or an option, it is from the list above: say in one line which one you understood (with its text) and do it. " if options else "handle it. ")
+                + "If it is ambiguous, ask in one line. ")
+    return out
 
 
 # v1.2: the ready-to-paste prompt is written by the assistant, not by the user. It must never carry
@@ -255,7 +399,7 @@ def open_question_in_state(text):
 
 def other_windows(folder, exclude, minutes=30):
     """Conversations that moved in the last minutes with their working folder inside this one."""
-    root = os.path.join(os.path.expanduser('~'), '.claude', 'projects')
+    root = os.path.join(CONFIG, 'projects')  # v1.4: respects CLAUDE_CONFIG_DIR
     base = os.path.normcase(os.path.abspath(folder))
     now = time.time()
     out = []
@@ -330,13 +474,37 @@ def tracks_by_date(text):
     return [n for _, _, n in items], bool(items and items[0][0])
 
 
+PREFIX = ''  # v1.4: options and blocked message go before any other note
+
+
+def with_excerpt(context):
+    # v1.4: instead of sending the agent to read the rules file (already loaded) and the whole STATE.md,
+    # hand it the few lines it needs right here.
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from state_excerpt import excerpt
+
+        def put(m):
+            path = m.group(1).strip()
+            t = re.search(r'in the (.+?) track', context)
+            ex = excerpt(path, t.group(1) if t else None)
+            if not ex:
+                return m.group(0)
+            return ("Do NOT read the rules file (already loaded) nor the whole " + path + ": here is the excerpt you need. "
+                    "If a detail is missing, Grep " + path + " for it. Never read HISTORY.md.\n<<EXCERPT\n" + ex + "\nEXCERPT>>\n")
+        return re.sub(r'read only the rules file and (.+?) \(not HISTORY\.md\)\.\s*', put, context, count=1)
+    except Exception:
+        return context
+
+
 def say(context):
+    context = with_excerpt(PREFIX + context)
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": context}}))
 
 
 def main():
     try:
-        data = json.load(sys.stdin)
+        data = json.loads(sys.stdin.buffer.read().decode('utf-8', 'replace'))  # v1.4: accents on Windows
     except Exception:
         data = {}
     cwd = data.get('cwd') or os.getcwd()
@@ -350,11 +518,19 @@ def main():
             state = None
 
     # What THIS window was doing (noted by remember_window.py at /clear)
-    previous, request, answer, paste, work, questions = None, '', '', '', None, []
+    global PREFIX
+    previous, request, answer, paste, work, questions, options = None, '', '', '', None, [], ''
     try:
         previous = previous_conversation(cwd)
         if previous and os.path.exists(previous):
-            request, answer, paste, questions = window_task(previous)
+            request, answer, paste, questions, options = window_task(previous)
+            try:
+                blocked = blocked_message(previous)
+            except Exception:
+                blocked = ''
+            PREFIX = options_note(options, blocked)
+            if blocked:
+                questions = ['(already answered by the blocked message)']
             work = window_work(previous, state or os.path.join(cwd, STATE_FILE), text, tracks)
         else:
             previous = None
@@ -375,8 +551,13 @@ def main():
         others = other_windows(base, exclude)
     except Exception:
         others = []
-    others_note = (("Other windows are working there right now (do not do or touch their work; if what comes next is theirs, tell the user): "
-                    + "; ".join(others) + ". ") if others else "")
+    # v1.4: windows were taking these requests as their own task. Now it says clearly they are not.
+    others_note = (("OTHER WINDOWS (this is NOT this window's task; listed only so you do not step on them): "
+                    + "; ".join(others) + ". Do not do, summarize or pick up any of that, even if it is in Now or Next of STATE.md; "
+                    "if what comes next looks like theirs, tell the user. ") if others else "")
+    ask_first = ("It is not known what this window was doing and other windows are working in the same folder: if the user just says \"continue\", "
+                 "do NOT take the first item in Next or the most recent track (it may belong to another window). Ask in one line: \"What was this window working on?\". "
+                 if (not (request or answer or work) and others) else "")
     mark = ''
     if work:
         mark = ("[window: project " + os.path.dirname(work[1]) + "] ") if work[0] == 'project' else ("[window: track " + work[1] + "] ")
@@ -384,6 +565,8 @@ def main():
 
     # 0) v1.2: a question to the user left unanswered comes first, before any prompt or task.
     open_q = open_question_in_state(text)
+    if questions == ['(already answered by the blocked message)']:
+        questions, open_q = [], ''  # the guard kept the user's answer
     if questions or open_q:
         listed = ' | '.join(questions or [open_q])
         say("The user just typed /clear. The previous session asked the user this and they did NOT answer it afterwards: \"" + listed + "\". "
@@ -426,6 +609,8 @@ def main():
     if not state:
         kids = children_with_state(cwd)
         if not kids:
+            if PREFIX:
+                say('')
             return
         say("The user just typed /clear. This is a parent folder with no STATE.md of its own; inside are projects with theirs: "
             + ", ".join(kids) + " (most recent first). Before answering, and without asking, create the parent's STATE.md "
@@ -438,6 +623,10 @@ def main():
 
     # 4) Tracks here, or a plain project
     task += others_note
+    if ask_first:  # v1.4: task unknown and other windows around: do not send it to the most recent track
+        say("The user just typed /clear. " + CAREFUL + f"Before answering, read only the rules file and {state} (not HISTORY.md). "
+            + ask_first + "If the user names a track or a task, go with that. " + lang + others_note)
+        return
     if tracks:
         mine = work[1] if work else None
         first = mine or tracks[0]
@@ -445,7 +634,7 @@ def main():
                "If the user names one (one word is enough), carry on with the first item in that track's Next and edit only that section and its Updated. "
                "If they ask \"how are we doing?\", answer one line per track in that order (at most 3, then \"and N more, idle\") without opening other files. "
                + (("This window was working on the " + first + " track before /clear " + mark + ". ") if mine else "")
-               + "If they just say \"continue\", carry on with the " + first + " track and say so in the first line (\"Continuing with " + first + "; tell me if it's another one\"). Do not ask. "
+               + "If they just say \"continue\", carry on with " + ("this window's task (below), in the " if (request or answer) else "the ") + first + " track and say so in the first line (\"Continuing with " + first + "; tell me if it's another one\"). Do not ask. "
                + task)
     else:
         how = ("If the user says \"continue\" or similar, "

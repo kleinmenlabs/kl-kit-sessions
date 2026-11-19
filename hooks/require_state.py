@@ -50,7 +50,7 @@ def edited_files(transcript):
 
 
 def main():
-    data = json.load(sys.stdin)
+    data = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
     if data.get("stop_hook_active"):
         return
     transcript = data.get("transcript_path")

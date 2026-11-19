@@ -10,8 +10,9 @@
 import importlib.util, json, os, re, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SESSIONS = os.path.join(os.path.expanduser('~'), '.claude', 'sessions')
-PROJECTS = os.path.join(os.path.expanduser('~'), '.claude', 'projects')
+CONFIG = os.environ.get('CLAUDE_CONFIG_DIR') or os.path.join(os.path.expanduser('~'), '.claude')  # v1.4
+SESSIONS = os.path.join(CONFIG, 'sessions')
+PROJECTS = os.path.join(CONFIG, 'projects')
 LOG = os.path.join(HERE, 'messages.json')
 
 
@@ -101,7 +102,7 @@ def stop(reason):
 
 
 def main():
-    data = json.load(sys.stdin)
+    data = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
     inp = data.get('tool_input') or {}
     to = re.sub(r'\s*\[[0-9a-f]+\]\s*$', '', (inp.get('to') or '').strip())
     text = inp.get('message') or ''

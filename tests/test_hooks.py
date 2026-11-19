@@ -1,4 +1,4 @@
-# Runs the five hooks against fake transcripts. Usage: python3 tests/test_hooks.py
+# Runs the kit hooks against fake transcripts. Usage: python3 tests/test_hooks.py
 import datetime as dt
 import json
 import os
@@ -26,15 +26,20 @@ def transcript(name, ctx, minutes_ago, edits=()):
     return path
 
 
-def run(hook, payload, pid=None, home=None):
+def run(hook, payload, pid=None, home=None, config=None):
     env = dict(os.environ)
     env.pop("CLAUDE_PID", None)
+    env.pop("CLAUDE_CONFIG_DIR", None)
     if pid:
         env["CLAUDE_PID"] = pid
     if home:  # a fake home, so the hooks see fake windows instead of your real ones
         env["HOME"] = env["USERPROFILE"] = home
-    out = subprocess.run([sys.executable, os.path.join(hooks, hook)], input=json.dumps(payload),
-                         capture_output=True, text=True, env=env).stdout.strip()
+    if config:
+        env["CLAUDE_CONFIG_DIR"] = config
+    # UTF-8 on purpose, like Claude Code sends it (accents must survive on Windows too)
+    out = subprocess.run([sys.executable, os.path.join(hooks, hook)],
+                         input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                         capture_output=True, env=env).stdout.decode("utf-8", "replace").strip()
     return json.loads(out) if out else None
 
 
@@ -196,8 +201,76 @@ os.makedirs(os.path.join(busy_home, ".claude", "projects", "p"))
 write_lines(os.path.join(busy_home, ".claude", "projects", "p", "b.jsonl"),
             [{"cwd": os.path.join(house, "plans")}, said("paint the garage door")])
 r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7999", home=busy_home))
-check("other windows busy in the same folder -> listed, hands off",
-      "paint the garage door" in r and "do not do or touch their work" in r)
+check("other windows busy, task of this window unknown -> asks what it was doing (v1.4)",
+      "paint the garage door" in r and "NOT this window's task" in r and "What was this window working on?" in r)
+w = write_lines(os.path.join(work, "mine.jsonl"), [said("fix the gutter"), answered("Halfway: the left side is done.")])
+run("remember_window.py", {"transcript_path": w, "cwd": house}, pid="7201")
+r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7201", home=busy_home))
+check("other windows busy, own task known -> keeps its task, theirs flagged as not its own",
+      "fix the gutter" in r and "NOT this window's task" in r and "What was this window working on?" not in r)
+
+# --- v1.4 ---
+cfg = os.path.join(work, "config1")
+os.makedirs(os.path.join(cfg, "projects", "p"))
+write_lines(os.path.join(cfg, "projects", "p", "c.jsonl"), [{"cwd": house}, said("sand the stairs")])
+r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7998", home=empty_home, config=cfg))
+check("CLAUDE_CONFIG_DIR -> other windows are read from there", "sand the stairs" in r)
+
+w = write_lines(os.path.join(work, "options.jsonl"), [said("roof colour"), answered(
+    "Which one do you prefer?\n1. Blue roof (recommended)\n2. Red roof\n3. Leave it as it is")])
+run("remember_window.py", {"transcript_path": w, "cwd": house}, pid="7301")
+r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7301", home=empty_home))
+check("options left to the user -> shown again identical, first",
+      r.startswith("FIRST") and "1. Blue roof (recommended)\n2. Red roof\n3. Leave it as it is" in r)
+w = write_lines(os.path.join(work, "steps.jsonl"), [said("how do I install it"), answered(
+    "Done. To install:\n1. Open the app\n2. Click save")])
+run("remember_window.py", {"transcript_path": w, "cwd": house}, pid="7302")
+check("numbered instruction steps -> not taken as options",
+      "IDENTICAL" not in ctx(run("continue_after_clear.py", {"cwd": house}, pid="7302", home=empty_home)))
+ask = {"type": "tool_use", "id": "q1", "name": "AskUserQuestion", "input": {"questions": [{"question": "Which tile?", "options": [
+    {"label": "Clay", "description": "classic"}, {"label": "Slate"}]}]}}
+w = write_lines(os.path.join(work, "ask.jsonl"), [said("choose a tile"), {"message": {"role": "assistant", "content": [ask]}}])
+run("remember_window.py", {"transcript_path": w, "cwd": house}, pid="7303")
+r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7303", home=empty_home))
+check("question box left unanswered -> its options come back numbered", "1. Clay — classic\n2. Slate" in r)
+w = write_lines(os.path.join(work, "ask_done.jsonl"), [said("choose a tile"), {"message": {"role": "assistant", "content": [ask]}},
+    {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "q1", "content": "Clay"}]}}])
+run("remember_window.py", {"transcript_path": w, "cwd": house}, pid="7304")
+check("question box already answered -> options not shown again",
+      "IDENTICAL" not in ctx(run("continue_after_clear.py", {"cwd": house}, pid="7304", home=empty_home)))
+
+heavy_opts = transcript("heavy_opts", 150_000, 90)
+with open(heavy_opts, "a", encoding="utf-8") as f:
+    f.write(json.dumps(answered("Which one do you prefer?\n1. Keep it\n2. Opción rápida")) + "\n")
+run("heavy_session.py", {"session_id": "h1", "transcript_path": heavy_opts, "prompt": "la opción 2"})
+run("remember_window.py", {"transcript_path": heavy_opts, "cwd": house}, pid="7305")
+r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7305", home=empty_home))
+check("message blocked by the guard -> handed to the new session as the answer, accents intact",
+      "did not let it through" in r and "la opción 2" in r and "2. Opción rápida" in r)
+
+summary = {"type": "user", "isCompactSummary": True, "message": {"role": "user", "content":
+    "This session is being continued.\n8. Current Work:\n   Building the roof calculator.\n9. Optional Next Step:\n   Add the tile count.\n"}}
+w = write_lines(os.path.join(work, "compact.jsonl"), [said("old request"), summary])
+run("remember_window.py", {"transcript_path": w, "cwd": house}, pid="7306")
+r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7306", home=empty_home))
+check("compacted conversation -> task taken from the summary",
+      "Building the roof calculator" in r and "Add the tile count" in r and "old request" not in r)
+
+w = write_lines(os.path.join(work, "limit.jsonl"), [said("paint the fence"), answered("Working on the fence: first coat done."),
+    {"message": {"role": "assistant", "model": "<synthetic>", "content": [{"type": "text", "text": "You've hit your limit"}]}}])
+run("remember_window.py", {"transcript_path": w, "cwd": house}, pid="7307")
+r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7307", home=empty_home))
+check("usage-limit system message -> not taken as the window's last answer",
+      "first coat done" in r and "hit your limit" not in r)
+
+twin = os.path.join(work, "twin")
+os.makedirs(twin)
+open(os.path.join(twin, "STATE.md"), "w").close()
+for n, job in (("t1", "wash the car"), ("t2", "walk the dog")):
+    run("remember_window.py", {"transcript_path": write_lines(os.path.join(work, n + ".jsonl"), [said(job)]), "cwd": twin})
+r = ctx(run("continue_after_clear.py", {"cwd": twin}, home=empty_home))
+check("two windows of one folder cleared at once, no window id -> takes neither task",
+      "wash the car" not in r and "walk the dog" not in r)
 
 # --- Messages between windows ---
 msg_home = os.path.join(work, "home2")
@@ -217,6 +290,16 @@ send["tool_input"]["to"] = "house-b2"
 r = run("message_to_window.py", send, home=msg_home)
 check("same request to a second window -> stopped",
       bool(r) and "already sent this same request" in r["hookSpecificOutput"]["permissionDecisionReason"])
+cfg2 = os.path.join(work, "config2")
+os.makedirs(os.path.join(cfg2, "projects", "p"))
+os.makedirs(os.path.join(cfg2, "sessions"))
+with open(os.path.join(cfg2, "sessions", "0.json"), "w") as f:
+    json.dump({"pid": os.getpid(), "name": "house-c3", "nameSource": "derived", "sessionId": "s9", "cwd": house}, f)
+write_lines(os.path.join(cfg2, "projects", "p", "s9.jsonl"), [said("fix the roof leak")])
+r = run("message_to_window.py", {"session_id": "me2", "tool_input": {"to": "house-c3", "message": "check the roof"}},
+        home=empty_home, config=cfg2)
+check("CLAUDE_CONFIG_DIR -> windows are read from there",
+      bool(r) and "fix the roof leak" in r["hookSpecificOutput"]["permissionDecisionReason"])
 shutil.rmtree(outer, ignore_errors=True)
 
 # Tokens saved counter (read by the status bar in plugin/)
@@ -244,6 +327,39 @@ check("/clear on a heavy conversation -> added", saved_total() == 330_020)
 small = transcript("saved-small", 50_000, 1)
 run("remember_window.py", {"transcript_path": small, "cwd": work}, pid="9002")
 check("/clear on a light conversation -> not counted", saved_total() == 330_020)
+
+# v1.4: "continue" without /clear in a conversation with history -> its own work
+long_conv = write_lines(os.path.join(work, "long.jsonl"), [said("tile the kitchen"), dict(answered("Half the wall is done."), type="assistant")])
+r = ctx(run("continue_without_clear.py", {"transcript_path": long_conv, "prompt": "continue"}))
+check("'continue' in a conversation with history -> reminded to keep its own work", "ALREADY has history" in r)
+check("'Siga, pues' (Spanish) -> same reminder",
+      "ALREADY has history" in ctx(run("continue_without_clear.py", {"transcript_path": long_conv, "prompt": "Siga, pues"})))
+check("a real request -> nothing", run("continue_without_clear.py", {"transcript_path": long_conv, "prompt": "continue with the bathroom tiles"}) is None)
+fresh = write_lines(os.path.join(work, "fresh.jsonl"), [said("continue")])
+check("'continue' in an empty conversation (after /clear) -> nothing",
+      run("continue_without_clear.py", {"transcript_path": fresh, "prompt": "continue"}) is None)
+
+# --- v1.4: cheap start ---
+lean = os.path.join(work, "lean")
+os.makedirs(lean)
+with open(os.path.join(lean, "STATE.md"), "w", encoding="utf-8") as f:
+    f.write("# STATE\n\n## Now\n- Tiling the bathroom, half done.\n" + "- old note\n" * 400 + "\n## Next\n1. Grout the tiles.\n")
+r = run("how_are_we.py", {"prompt": "How are we doing?", "cwd": lean})
+check("'how are we doing?' -> answered by the kit, message blocked (0 tokens)",
+      bool(r) and r.get("decision") == "block" and "Tiling the bathroom" in r["reason"] and "Grout the tiles" in r["reason"])
+check("'¿cómo vamos?' (Spanish) -> same", (run("how_are_we.py", {"prompt": "¿Cómo vamos?", "cwd": lean}) or {}).get("decision") == "block")
+check("a real request -> goes to the agent", run("how_are_we.py", {"prompt": "how are we doing on the roof budget", "cwd": lean}) is None)
+r = ctx(run("continue_after_clear.py", {"cwd": lean}, pid="7401", home=empty_home))
+check("after /clear -> short excerpt handed over instead of 'read the whole STATE.md'",
+      "<<EXCERPT" in r and "Grout the tiles" in r and "read only the rules file" not in r and len(r) < 3500)
+big_file = os.path.join(lean, "STATE.md")
+deny = lambda r: bool(r) and r["hookSpecificOutput"]["permissionDecision"] == "deny"
+check("Read of a big file without limit -> denied", deny(run("read_guard.py", {"tool_name": "Read", "tool_input": {"file_path": big_file}})))
+check("Read with offset/limit -> allowed", run("read_guard.py", {"tool_name": "Read", "tool_input": {"file_path": big_file, "limit": 40}}) is None)
+check("Read of HISTORY.md -> denied", deny(run("read_guard.py", {"tool_name": "Read", "tool_input": {"file_path": os.path.join(lean, "HISTORY.md"), "limit": 5}})))
+check("cat of a big file -> denied", deny(run("read_guard.py", {"tool_name": "Bash", "tool_input": {"command": 'cat "' + big_file + '"'}})))
+check("cat piped to head -> allowed", run("read_guard.py", {"tool_name": "Bash", "tool_input": {"command": 'cat "' + big_file + '" | head -5'}}) is None)
+check("small file -> allowed", run("read_guard.py", {"tool_name": "Read", "tool_input": {"file_path": os.path.join(hooks, "how_are_we.py")}}) is None)
 
 shutil.rmtree(work, ignore_errors=True)
 print(f"\n{sum(results)}/{len(results)} passed")

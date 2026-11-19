@@ -5,7 +5,17 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 ~/.claude/hooks/how_are_we.py",
+            "timeout": 10
+          },
+          {
+            "type": "command",
             "command": "python3 ~/.claude/hooks/heavy_session.py",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/continue_without_clear.py",
             "timeout": 15
           }
         ]
@@ -54,6 +64,16 @@
             "type": "command",
             "command": "python3 ~/.claude/hooks/message_to_window.py",
             "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/read_guard.py",
+            "timeout": 10
           }
         ]
       }

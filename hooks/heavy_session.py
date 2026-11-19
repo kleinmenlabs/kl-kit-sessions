@@ -19,6 +19,7 @@ IDLE_MINUTES = 55         # prompt cache lifetime is up to 1 hour; adjust to you
 FORCE_WORD = "force"
 HERE = os.path.dirname(os.path.abspath(__file__))
 WARNED_FILE = os.path.join(HERE, "heavy_session_warned.json")
+BLOCKED_FILE = os.path.join(HERE, "blocked_messages.json")
 
 
 def last_usage(transcript):
@@ -66,13 +67,37 @@ def warn_once(session, ctx):
             "of 'Next', saying: \"Close this session and open a new one with this text\". "
             "The prompt carries only tasks the user asked for, never approvals or answers they did not give; "
             "if a question to the user was left unanswered, the prompt asks first to repeat that question and wait. "
+            "If your last answer gave the user numbered or lettered options, the prompt copies them complete and word for word, "
+            "with the same numbers in the same order, and asks to show them like that before anything else. "
             "Talk to the user in their own language."
         )}}))
 
 
+def save_blocked(transcript, prompt):
+    """v1.4: the message the guard stops (e.g. "option 2") is kept per conversation, so after /clear
+    continue_after_clear.py hands it to the new session. prompt=None removes it (sent with force)."""
+    try:
+        with open(BLOCKED_FILE, encoding="utf-8") as f:
+            blocked = json.load(f)
+    except Exception:
+        blocked = {}
+    now = dt.datetime.now().timestamp()
+    blocked = {k: v for k, v in blocked.items() if now - v.get("t", 0) < 86400}
+    if prompt is None:
+        blocked.pop(transcript, None)
+    else:
+        blocked[transcript] = {"prompt": prompt[:2000], "t": now}
+    with open(BLOCKED_FILE, "w", encoding="utf-8") as f:
+        json.dump(blocked, f, ensure_ascii=False)
+
+
 def main():
-    data = json.load(sys.stdin)
+    data = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))  # v1.4: accents survive on Windows
     if data.get("prompt", "").strip().lower().startswith(FORCE_WORD):
+        try:
+            save_blocked(data.get("transcript_path") or "", None)
+        except Exception:
+            pass
         return
     transcript = data.get("transcript_path")
     if not transcript or not os.path.exists(transcript):
@@ -84,6 +109,10 @@ def main():
     if idle < IDLE_MINUTES:
         warn_once(data.get("session_id") or transcript, ctx)
         return
+    try:
+        save_blocked(transcript, data.get("prompt", ""))
+    except Exception:
+        pass
     try:  # tokens saved counter (status bar in plugin/)
         sys.path.insert(0, HERE)
         import tokens_saved
@@ -98,6 +127,8 @@ def main():
             f"HEAVY SESSION: this conversation is {ctx:,} tokens and has been idle for {idle_txt}. "
             "Sending now would reload all of it at once and use a big part of your usage limit. "
             "Your message was NOT sent and cost nothing. Open a new session (it starts by reading STATE.md). "
+            "If you use /clear, the new session shows you the same options you had here, with the same numbers, "
+            "and knows what you just typed. "
             f"If you really need to continue here, start your message with: {FORCE_WORD}"
         )}))
 

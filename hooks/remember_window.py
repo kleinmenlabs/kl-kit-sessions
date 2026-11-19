@@ -9,7 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WINDOWS_FILE = os.path.join(HERE, 'windows.json')
 
 def main():
-    data = json.load(sys.stdin)
+    data = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
     transcript = data.get('transcript_path')
     if not transcript:
         return

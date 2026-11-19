@@ -4,11 +4,12 @@
 
 *[Leer en español](README.es.md)*
 
-AI coding sessions forget, burn through your usage limit and get cut off without warning. This kit fixes that with three plain files and five small hooks. No servers, no extra models, no dependencies beyond Python.
+AI coding sessions forget, burn through your usage limit and get cut off without warning. This kit fixes that with three plain files and eight small hooks. No servers, no extra models, no dependencies beyond Python.
 
 **Works with:** Claude Code, Codex, Cursor and any agent that reads `AGENTS.md` (the rules and files). The hooks are for **Claude Code only**.
 
 ## What's new
+- **v1.4 (Nov 19, 2026):** windows no longer pick up each other's work after long idle times. New `continue_without_clear.py` hook: "continue" or "hi" in a conversation with history means its own work, not the latest line of the shared STATE.md. After `/clear`: the options you were given come back word for word (same numbers), a message the guard blocked counts as your answer, compacted conversations keep their task, the usage-limit notice is no longer taken as the last answer, and if the window's task is unknown while other windows are busy it asks instead of guessing. Accents survive on Windows, and the hooks respect `CLAUDE_CONFIG_DIR`. New: install it by asking your agent. **Cheaper start:** "how are we doing?" is answered by the kit itself from STATE.md (0 tokens); after `/clear` the session gets a short excerpt instead of reading the whole STATE.md; and a read guard stops the agent from reading whole files or the history (everything it reads is re-sent on every later step). 56 tests.
 - **v1.3 (Nov 18, 2026):** an optional **status bar** for Claude Code: *"KL Kit Sessions: 426k tokens saved with /clear · this window: 105k · 5 windows: 380k"*. It counts what the kit saved you (each heavy conversation you cleared or that the guard blocked counts once, with its size), how heavy this window is right now and the total of your open windows. New `tokens_saved.py` hook, used by `heavy_session.py` and `remember_window.py`. 31 tests.
 - **v1.2 (Nov 17, 2026):** the ready-to-paste prompt **can no longer approve things for you.** It only carries tasks you asked for, never "the user said yes" when you did not. If the last answer left you a question and you did not answer it, after `/clear` the new session asks it again first and waits, instead of doing the task. If the prompt mentions an approval, the session checks that you really said it. 27 tests.
 - **v1.1 (Nov 16, 2026):** after `/clear`, each window goes back to **its own** task instead of grabbing another window's work. "Continue" now means the prompt that window left you (or your last request), it finds the real project even if the session was opened in another folder, and a new hook, `message_to_window.py`, makes sure a request reaches the right window and only one. 23 tests.
@@ -29,6 +30,9 @@ AI coding sessions forget, burn through your usage limit and get cut off without
 | `heavy_session.py` hook (Claude Code) | Heavy and idle session: blocks your message before it is sent (costs nothing). Heavy and active: tells Claude its exact size once, so it saves and gives you the prompt for a fresh session. |
 | `continue_after_clear.py` hook (Claude Code) | After `/clear`, type "continue" (or the track name) instead of pasting the prompt. "Continue" means the task **that window** was doing: the prompt its last answer left you, or your last request. It finds the project the window really worked on, even if it was opened in another folder, and keeps its hands off what other windows are doing. |
 | `remember_window.py` hook (Claude Code) | Runs at `/clear` and notes which conversation this window had, so `continue_after_clear.py` knows the track it was on, even if another window updated STATE.md later. |
+| `continue_without_clear.py` hook (Claude Code) | "Continue" or a greeting in a conversation that already has history means that conversation's own work, never the latest item of a STATE.md shared with other windows. |
+| `how_are_we.py` hook (Claude Code) | "How are we doing?" (or "¿cómo vamos?") is answered from STATE.md by the kit itself, one line per track. The message never reaches the agent: 0 tokens. |
+| `read_guard.py` hook (Claude Code) | Stops the agent from reading a whole big file, dumping it with `cat`, or reading the history. It must search and read just the part it needs. Uses `state_excerpt.py`, also used after `/clear`. |
 | `message_to_window.py` hook (Claude Code) | Before a session sends a message to another window named after its folder (`app-77`, `app-62`…), it shows what every open window is doing, so the request goes to the right one. The same request never goes to two windows. |
 | `tokens_saved.py` (Claude Code) | Counts the tokens the kit saved you: when `heavy_session.py` blocks a heavy idle conversation or you `/clear` one, its size is added once to `~/.claude/hooks/tokens_saved.json`. An estimate. |
 | Status bar `plugin/` (Claude Code, optional) | Always on screen: tokens saved with `/clear`, this window's size and the total of your open windows. Refreshes every minute and after each reply. |
@@ -37,6 +41,8 @@ AI coding sessions forget, burn through your usage limit and get cut off without
 A new session then starts with: *"Continue with the project. Read only the rules file and STATE.md. First in 'Next' is: …"*, and it is cheap and up to speed in a minute.
 
 ## Install
+**Fastest: ask your agent.** Open Claude Code and paste: `Install the session kit from https://github.com/kleinmenlabs/kl-kit-sessions`. It copies the hooks, rules, skill and templates, and merges the hooks into your existing `settings.json` instead of replacing it. The steps below are the manual way.
+
 1. **Per project** (any agent): copy `templates/` into the project and fill in `AGENTS.md` and `STATE.md`. `CLAUDE.md` only contains `@AGENTS.md`, so Claude Code reads the same rules. A project's own rules always win over the global ones.
 2. **Global rules** (optional, every project) from `global/AGENTS.md`. If you already have global rules, append instead of replacing:
    - Claude Code: copy it to `~/.claude/CLAUDE.md`.
@@ -44,11 +50,11 @@ A new session then starts with: *"Continue with the project. Read only the rules
    - Cursor: paste it into Settings → Rules → User Rules.
 
 ### Claude Code extras
-3. **Hooks:** copy the `hooks/*.py` files to `~/.claude/hooks/` and merge the `hooks` block from `hooks/settings.example.json` into `~/.claude/settings.json`. On Windows, use `python` instead of `python3` and a full path such as `C:/Users/you/.claude/hooks/heavy_session.py`.
-4. **Skill (optional):** copy `skills/session-kit` to `~/.claude/skills/session-kit`. Then type `/session-kit` in any project to set it up for you.
+3. **Hooks:** copy the `hooks/*.py` files to `~/.claude/hooks/` and merge the `hooks` block from `hooks/settings.example.json` into `~/.claude/settings.json`. On Windows, use `python` instead of `python3` and a full path such as `C:/Users/you/.claude/hooks/heavy_session.py` (not `/c/...`). If you already have a `settings.json`, merge the block into it; do not replace the file.
+4. **Skill (optional):** copy `skills/session-kit` to `~/.claude/skills/session-kit` and keep the `templates/` folder next to it (`~/.claude/skills/session-kit/templates`), since the skill builds the files from it. Then type `/session-kit` in any project to set it up for you.
 5. **Status bar (optional):** run `claude plugin marketplace add kleinmenlabs/kl-kit-sessions` and then `claude plugin install kl-kit-sessions-bar@kl-kit-sessions` (or `/plugin` inside Claude Code). It shows on new sessions. It reads `~/.claude/hooks/` (or `$CLAUDE_CONFIG_DIR/hooks/`), so install the hooks of step 3 first.
 
-Check the hooks with `python3 tests/test_hooks.py` (31 cases, no real sessions involved) and the bar with `claude plugin test plugin`.
+Check the hooks with `python3 tests/test_hooks.py` (56 cases, no real sessions involved) and the bar with `claude plugin test plugin`.
 
 ## Settings
 At the top of `hooks/heavy_session.py`:
