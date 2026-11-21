@@ -103,7 +103,7 @@ def previous_conversation(cwd):
     key = pid if pid in windows and now - windows[pid].get('t', 0) < 120 else None
     if not key:  # no window id: the one noted seconds ago in the same folder
         near = [(v.get('t', 0), k) for k, v in windows.items()
-                if v.get('cwd') == cwd and now - v.get('t', 0) < 15]
+                if v.get('cwd') == cwd and 0 <= now - v.get('t', 0) < 5]  # v1.5: 5 s, so another window's /clear is not taken
         # v1.4: if two windows of the same folder cleared at once, we cannot tell which is which
         key = near[0][1] if len(near) == 1 else None
     if not key:
@@ -327,7 +327,7 @@ def window_task(transcript):
                         options = op
     if asks and not options:
         options = list(asks.values())[-1]
-    return request[:1400 if request.startswith('(from the') else 300], answer[:400], paste[:1200], questions[-3:], options
+    return request[:1400 if request.startswith('(from the') else 300], answer[-3000:], paste[:1200], questions[-3:], options  # v1.5: full answer (main trims it); a pending question needs its context
 
 
 BLOCKED_FILE = os.path.join(HERE, 'blocked_messages.json')
@@ -372,7 +372,7 @@ def options_note(options, blocked):
     """What goes first after /clear when options or a blocked message were left. v1.4."""
     out = ''
     if options:
-        out += ("FIRST, BEFORE ANYTHING ELSE: this window's last answer left the user these options to choose from, and they have not chosen yet (or the guard stopped them): "
+        out += ("If the user brought no task (see the rule above): this window's last answer left the user these options to choose from, and they have not chosen yet (or the guard stopped them): "
                 "<<<\n" + options + "\n>>> "
                 "Show them again IDENTICAL: same text, same numbers or letters, same order; do not add, remove, merge, change or reorder any, "
                 "and do not propose new options instead of these. If the user answers with a number or a letter (\"2\", \"B\"), it refers to THIS list. ")
@@ -475,6 +475,28 @@ def tracks_by_date(text):
 
 
 PREFIX = ''  # v1.4: options and blocked message go before any other note
+PROJECT = ''  # v1.5: this window's project folder; a bare "STATE.md" is looked up there
+
+
+def named_project(text, cwd):
+    """Project folder a ready-to-paste prompt names: "(C:/path)" or "Continue with the project NAME"
+    (NAME is looked up in the folder, the one above and next to it). v1.5: the excerpt used to come from cwd's STATE.md."""
+    m = re.search(r'\(([^)]+)\)', text or '')
+    if m and os.path.isfile(os.path.join(m.group(1).strip(), STATE_FILE)):
+        return m.group(1).strip()
+    m = re.search(r'Continue with the project ([^\s.,;(]+)', text or '')
+    if not m:
+        return ''
+    name = m.group(1).strip()
+    d = os.path.abspath(cwd)
+    for base in (d, os.path.dirname(d), os.path.dirname(os.path.dirname(d))):
+        try:
+            for n in os.listdir(base):
+                if n.lower() == name.lower() and os.path.isfile(os.path.join(base, n, STATE_FILE)):
+                    return os.path.join(base, n)
+        except Exception:
+            continue
+    return ''
 
 
 def with_excerpt(context):
@@ -486,19 +508,33 @@ def with_excerpt(context):
 
         def put(m):
             path = m.group(1).strip()
+            # v1.5: a bare "STATE.md" is this window's project's, not the opened folder's
+            if not os.path.isabs(path) and PROJECT:
+                path = os.path.join(PROJECT, path)
+            if not os.path.isabs(path) or not os.path.isfile(path):
+                return m.group(0)
             t = re.search(r'in the (.+?) track', context)
             ex = excerpt(path, t.group(1) if t else None)
             if not ex:
                 return m.group(0)
             return ("Do NOT read the rules file (already loaded) nor the whole " + path + ": here is the excerpt you need. "
                     "If a detail is missing, Grep " + path + " for it. Never read HISTORY.md.\n<<EXCERPT\n" + ex + "\nEXCERPT>>\n")
-        return re.sub(r'read only the rules file and (.+?) \(not HISTORY\.md\)\.\s*', put, context, count=1)
+        return re.sub(r'read only the rules file and (.+?) \(not HISTORY\.md\)\.\s*', put, context, count=1, flags=re.I)
     except Exception:
         return context
 
 
+# v1.5: this note is written BEFORE the user types. If they paste or type a task, theirs wins.
+USER_WINS = ("RULE ABOVE EVERYTHING BELOW: this note was built before the user typed and may belong to another window. "
+             "If the user's first message brings a concrete task (they pasted a prompt like \"Continue with the track X...\", or name a track, a project or a job), "
+             "do THAT task and do not mention anything from this note: no pending questions, no options, no other task. "
+             "What follows only applies if the user greets or says \"continue\" or something with no task. ")
+
+
 def say(context):
-    context = with_excerpt(PREFIX + context)
+    if not (PREFIX + context).strip():
+        return
+    context = with_excerpt(USER_WINS + PREFIX + context)
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": context}}))
 
 
@@ -536,17 +572,21 @@ def main():
             previous = None
     except Exception:
         work = None
+    global PROJECT
     if paste:
-        m = re.search(r'\(([^)]+)\)', paste)
-        if m and os.path.isfile(os.path.join(m.group(1).strip(), STATE_FILE)):
-            s = os.path.join(m.group(1).strip(), STATE_FILE)
+        p = named_project(paste, cwd)  # v1.5: also "Continue with the project X" with no path
+        if p:
+            s = os.path.join(p, STATE_FILE)
             work = None if (state and same(s, state)) else ('project', s)
+            PROJECT = p
         m = re.search(r'Continue with the ([^.,;\n]+?) track', paste)
         if m and m.group(1).strip() in tracks:
             work = ('track', m.group(1).strip())
 
     exclude = {os.path.normcase(os.path.abspath(p)) for p in (previous, data.get('transcript_path')) if p}
     base = os.path.dirname(work[1]) if work and work[0] == 'project' else (os.path.dirname(state) if state else cwd)
+    if work and work[0] == 'project':
+        PROJECT = PROJECT or base
     try:
         others = other_windows(base, exclude)
     except Exception:
@@ -556,7 +596,9 @@ def main():
                     + "; ".join(others) + ". Do not do, summarize or pick up any of that, even if it is in Now or Next of STATE.md; "
                     "if what comes next looks like theirs, tell the user. ") if others else "")
     ask_first = ("It is not known what this window was doing and other windows are working in the same folder: if the user just says \"continue\", "
-                 "do NOT take the first item in Next or the most recent track (it may belong to another window). Ask in one line: \"What was this window working on?\". "
+                 "do NOT take the first item in Next or the most recent track (it may belong to another window). Never ask \"What was this window working on?\" (the user does not know). "
+                 "Show topics to choose from: a numbered list of the tracks or topics in STATE.md (most recent first, at most 6, one line each with what is next), "
+                 "marking the ones another window is already doing (see above). End with \"Which one shall I continue?\" and wait. "
                  if (not (request or answer or work) and others) else "")
     mark = ''
     if work:
@@ -567,10 +609,20 @@ def main():
     open_q = open_question_in_state(text)
     if questions == ['(already answered by the blocked message)']:
         questions, open_q = [], ''  # the guard kept the user's answer
+    if open_q and not questions and ask_first:
+        open_q = ''  # v1.5: unknown window; the question in STATE.md may belong to another one
+    long_answer, answer = answer, answer[:400]
     if questions or open_q:
         listed = ' | '.join(questions or [open_q])
+        # v1.5: only "Shall I start on that?" went through, and the agent looked for "that" in STATE.md (another window's work).
+        q_context = (("That question came from this window's conversation; the user's last request was \"" + request + "\" "
+                      "and the window's last answer (where the question is) was: <<<" + long_answer[-1800:] + ">>> "
+                      "That answer is ALL the context of the question: explain it with that. Do NOT look for \"that\" in STATE.md, "
+                      "HISTORY.md or the most recent track (it may belong to another window), and do not tell the user anything that is not in that answer. ")
+                     if questions and (long_answer or request) else "")
         say("The user just typed /clear. The previous session asked the user this and they did NOT answer it afterwards: \"" + listed + "\". "
-            "Before anything else, ask that question again, the same, with the minimum needed to understand it (if it came with an image or file, show it again), "
+            + q_context +
+            "If the user brought no task (see the rule above), ask that question again, the same, with the minimum needed to understand it (if it came with an image or file, show it again), "
             "and wait for the answer. Do not do the task that depended on it or treat it as answered, even if the ready-to-paste prompt or STATE.md say otherwise. "
             + (("The prompt the session left to paste was: \"" + paste + "\"; use it only after the answer and if it fits it. ") if paste else "")
             + CAREFUL + lang + mark + others_note)

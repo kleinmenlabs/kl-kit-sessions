@@ -202,12 +202,12 @@ write_lines(os.path.join(busy_home, ".claude", "projects", "p", "b.jsonl"),
             [{"cwd": os.path.join(house, "plans")}, said("paint the garage door")])
 r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7999", home=busy_home))
 check("other windows busy, task of this window unknown -> asks what it was doing (v1.4)",
-      "paint the garage door" in r and "NOT this window's task" in r and "What was this window working on?" in r)
+      "paint the garage door" in r and "NOT this window's task" in r and "Which one shall I continue?" in r)
 w = write_lines(os.path.join(work, "mine.jsonl"), [said("fix the gutter"), answered("Halfway: the left side is done.")])
 run("remember_window.py", {"transcript_path": w, "cwd": house}, pid="7201")
 r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7201", home=busy_home))
 check("other windows busy, own task known -> keeps its task, theirs flagged as not its own",
-      "fix the gutter" in r and "NOT this window's task" in r and "What was this window working on?" not in r)
+      "fix the gutter" in r and "NOT this window's task" in r and "Which one shall I continue?" not in r)
 
 # --- v1.4 ---
 cfg = os.path.join(work, "config1")
@@ -221,7 +221,7 @@ w = write_lines(os.path.join(work, "options.jsonl"), [said("roof colour"), answe
 run("remember_window.py", {"transcript_path": w, "cwd": house}, pid="7301")
 r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7301", home=empty_home))
 check("options left to the user -> shown again identical, first",
-      r.startswith("FIRST") and "1. Blue roof (recommended)\n2. Red roof\n3. Leave it as it is" in r)
+      r.startswith("RULE ABOVE EVERYTHING BELOW") and "If the user brought no task" in r and "1. Blue roof (recommended)\n2. Red roof\n3. Leave it as it is" in r)
 w = write_lines(os.path.join(work, "steps.jsonl"), [said("how do I install it"), answered(
     "Done. To install:\n1. Open the app\n2. Click save")])
 run("remember_window.py", {"transcript_path": w, "cwd": house}, pid="7302")
@@ -360,6 +360,33 @@ check("Read of HISTORY.md -> denied", deny(run("read_guard.py", {"tool_name": "R
 check("cat of a big file -> denied", deny(run("read_guard.py", {"tool_name": "Bash", "tool_input": {"command": 'cat "' + big_file + '"'}})))
 check("cat piped to head -> allowed", run("read_guard.py", {"tool_name": "Bash", "tool_input": {"command": 'cat "' + big_file + '" | head -5'}}) is None)
 check("small file -> allowed", run("read_guard.py", {"tool_name": "Read", "tool_input": {"file_path": os.path.join(hooks, "how_are_we.py")}}) is None)
+
+# --- v1.5: continuity after /clear ---
+garden = os.path.join(work, "Garden")
+os.makedirs(garden)
+with open(os.path.join(garden, "STATE.md"), "w", encoding="utf-8") as f:
+    f.write("# STATE\n\n## Now\n- Planting the roses.\n\n## Next\n1. Water the roses.\n")
+w = write_lines(os.path.join(work, "named.jsonl"), [said("prune the hedge"), answered(
+    "Done. If you start fresh, paste this:\n> Continue with the project Garden. Read only the rules file and STATE.md (not HISTORY.md). "
+    "First in \"Next\" is: water the roses. Do it and let me know.")])
+run("remember_window.py", {"transcript_path": w, "cwd": house}, pid="7501")
+r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7501", home=empty_home))
+check("paste names a project without path -> excerpt from THAT project's STATE.md (v1.5)",
+      "<<EXCERPT" in r and "Planting the roses" in r)
+w = write_lines(os.path.join(work, "asked.jsonl"), [said("price the roof repair"), answered(
+    "The roof repair comes to 3 options: tiles, sheet metal or patch. Shall I start on that?")])
+run("remember_window.py", {"transcript_path": w, "cwd": house}, pid="7502")
+r = ctx(run("continue_after_clear.py", {"cwd": house}, pid="7502", home=busy_home))
+check("pending question -> comes with this window's last answer, not STATE.md (v1.5)",
+      "sheet metal or patch" in r and "Do NOT look for" in r)
+fresh = os.path.join(work, "fresh_none.jsonl")
+r = ctx(run("continue_without_clear.py", {"prompt": "continue", "transcript_path": fresh, "cwd": house}, home=busy_home))
+check("new window + other windows busy + 'continue' -> shows topics to choose (v1.5)",
+      "Which one shall I continue?" in r)
+check("new window + other windows busy + a concrete task -> left alone (v1.5)",
+      run("continue_without_clear.py", {"prompt": "Fix the roof gutter on the left side", "transcript_path": fresh, "cwd": house}, home=busy_home) is None)
+check("new window alone + 'continue' -> nothing",
+      run("continue_without_clear.py", {"prompt": "continue", "transcript_path": fresh, "cwd": house}, home=empty_home) is None)
 
 shutil.rmtree(work, ignore_errors=True)
 print(f"\n{sum(results)}/{len(results)} passed")

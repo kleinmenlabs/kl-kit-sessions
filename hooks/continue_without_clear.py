@@ -39,6 +39,14 @@ def history(transcript):
     return has, compacted
 
 
+def cleared_with_context(transcript):
+    """True if continue_after_clear.py already told this conversation what to do (SessionStart:clear with context)."""
+    for line in tail(transcript):
+        if 'SessionStart:clear' in line and 'additionalContext' in line:
+            return True
+    return False
+
+
 def main():
     try:
         data = json.loads(sys.stdin.buffer.read().decode('utf-8', 'replace'))
@@ -48,13 +56,32 @@ def main():
     if not SHORT.match(text):
         return
     tr = data.get('transcript_path')
-    if not tr or not os.path.exists(tr):
+    if not tr:
         return
     try:
-        has, compacted = history(tr)
+        has, compacted = history(tr) if os.path.exists(tr) else (False, False)
     except Exception:
         return
     if not has:
+        # v1.5: NEW window (or /clear with no context) while other windows work in the same folder:
+        # nobody knows what this one was doing, so it asks instead of taking the most recent track.
+        try:
+            if os.path.exists(tr) and cleared_with_context(tr):
+                return  # continue_after_clear.py already told it what to do
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from continue_after_clear import other_windows, find_state
+            cwd = data.get('cwd') or os.getcwd()
+            s = find_state(cwd)
+            others = other_windows(os.path.dirname(s) if s else cwd, {os.path.normcase(os.path.abspath(tr))})
+        except Exception:
+            return
+        if others and re.match(r'^(?:continue|go on|carry on|keep going|resume|next|ok|siga|sigue|contin)', text, re.I):  # v1.5: a concrete task is left alone
+            note = ("The user wrote \"" + text + "\" in a window with no history, and other windows are working in this folder ("
+                    + "; ".join(others) + "). It is not known what this window was doing: do NOT take the most recent track or the first item "
+                    "in Next of STATE.md (it may belong to another window), and never ask \"What was this window working on?\". Show topics to choose from, in the user's language: "
+                    "a numbered list of the tracks or topics in STATE.md (most recent first, at most 6, one line each with what is next), marking the ones "
+                    "another window is already doing. End with \"Which one shall I continue?\" and wait; do not start anything.")
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": note}}))
         return
     note = ("The user wrote \"" + text + "\" in a conversation that ALREADY has history. \"Continue\" or a greeting refers to what THIS "
             "conversation was doing" + (" (see the automatic summary above: \"Current Work\" / \"Optional Next Step\")" if compacted else "") + ". "
